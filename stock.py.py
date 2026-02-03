@@ -5,7 +5,6 @@ import pandas as pd
 st.set_page_config(page_title="급등주 스캐너", layout="wide")
 st.title("🚀 오늘의 미국장 급등주 스캐너")
 
-# 1. 필터 값 매핑용 딕셔너리 (오류 방지)
 price_options = {
     1.0: "Over $1",
     2.0: "Over $2",
@@ -16,7 +15,6 @@ price_options = {
 }
 
 st.sidebar.header("필터 설정")
-# 슬라이더 대신 선택 박스로 변경하여 오류 원천 차단
 selected_price = st.sidebar.selectbox("최소 가격 선택 ($)", options=list(price_options.keys()), index=0)
 min_change = st.sidebar.slider("최소 상승률 (%)", 0, 50, 15)
 
@@ -25,34 +23,35 @@ if st.button("지금 급등주 찾기"):
         try:
             foverview = Overview()
             
-            # 2. 필터 설정 (정해진 문자열 사용)
-            # 'Price'에는 'Over $1' 같은 형식이 들어가야 함
+            # [수정 포인트 1] filters_dict에서 'Order'를 제거합니다.
             filters_dict = {
-                'Price': price_options[selected_price], 
-                'Order': 'Change'
+                'Price': price_options[selected_price]
             }
             
             foverview.set_filter(filters_dict=filters_dict)
-            df = foverview.screener_view()
+            
+            # [수정 포인트 2] 정렬(order)은 screener_view 호출 시 인자로 전달합니다.
+            # 기본값은 'Ticker'이며, 상승률순 정렬을 원하면 'Change'를 입력합니다.
+            df = foverview.screener_view(order='Change') 
 
             if df is not None and not df.empty:
-                # 상승률 문자열을 숫자로 변환하여 필터링
-                df['Change_Num'] = df['Change'].str.replace('%', '').astype(float)
+                # 'Change' 컬럼의 % 기호를 제거하고 숫자로 변환
+                df['Change_Num'] = df['Change'].str.replace('%', '', regex=False).astype(float)
                 result = df[df['Change_Num'] >= min_change]
 
                 if not result.empty:
                     st.success(f"{len(result)}개의 종목을 찾았습니다!")
                     display_df = result[['Ticker', 'Company', 'Sector', 'Price', 'Change', 'Volume', 'Relative Volume']]
-                    # 소수점 정렬 및 하이라이트
+                    # 결과 내에서 다시 한번 높은 순서대로 정렬하여 출력
                     st.dataframe(display_df.sort_values(by='Change_Num', ascending=False), use_container_width=True)
                 else:
                     st.warning(f"상승률 {min_change}% 이상인 종목이 현재 없습니다.")
             else:
-                st.error("데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.")
+                st.error("데이터를 불러오지 못했습니다.")
 
         except Exception as e:
-            st.error(f"알 수 없는 오류 발생: {e}")
-            st.info("Tip: Finviz 사이트의 필터 양식이 변경되었을 수 있습니다.")
+            st.error(f"오류 발생: {e}")
 
 st.divider()
-st.caption("주의: 핸드폰에서 보실 때는 '가로 모드'가 더 편합니다.")
+st.caption("데이터 제공: Finviz (실시간이 아니며 약 15분 지연될 수 있습니다.)")
+
