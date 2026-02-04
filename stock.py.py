@@ -2,56 +2,73 @@ import streamlit as st
 from finvizfinance.screener.overview import Overview
 import pandas as pd
 
-st.set_page_config(page_title="급등주 스캐너", layout="wide")
-st.title("🚀 오늘의 미국장 급등주 스캐너")
+st.set_page_config(page_title="급등주 TOP 10 스캐너", layout="wide")
+st.title("🚀 미국장 급등주 TOP 10 스캐너")
 
-price_options = {
-    1.0: "Over $1",
-    2.0: "Over $2",
-    5.0: "Over $5",
-    10.0: "Over $10",
-    20.0: "Over $20",
-    50.0: "Over $50"
+# 사이드바 설정
+st.sidebar.header("🔍 필터 설정")
+
+# 1. 가격 필터
+price_options = {1.0: "Over $1", 5.0: "Over $5", 10.0: "Over $10", 20.0: "Over $20"}
+selected_price = st.sidebar.selectbox("최소 가격 ($)", options=list(price_options.keys()), index=1)
+
+# 2. 거래량 필터 (추가)
+# Finviz 라이브러리 규격에 맞는 옵션들입니다.
+volume_options = {
+    "Any": "Any",
+    "Over 100K": "Over 100K",
+    "Over 500K": "Over 500K",
+    "Over 1M": "Over 1M",
+    "Over 2M": "Over 2M"
 }
+selected_vol = st.sidebar.selectbox("최소 거래량", options=list(volume_options.keys()), index=2) # 기본 500K
 
-st.sidebar.header("필터 설정")
-selected_price = st.sidebar.selectbox("최소 가격 선택 ($)", options=list(price_options.keys()), index=0)
+# 3. 상승률 필터
 min_change = st.sidebar.slider("최소 상승률 (%)", 0, 50, 15)
 
 if st.button("지금 급등주 찾기"):
-    with st.spinner('전 종목 스캔 중...'):
+    with st.spinner('Finviz 서버에서 상위 종목 분석 중...'):
         try:
             foverview = Overview()
             
-            # [수정 포인트 1] filters_dict에서 'Order'를 제거합니다.
+            # 필터 딕셔너리 구성
             filters_dict = {
-                'Price': price_options[selected_price]
+                'Price': price_options[selected_price],
+                'Current Volume': volume_options[selected_vol]
             }
             
             foverview.set_filter(filters_dict=filters_dict)
             
-            # [수정 포인트 2] 정렬(order)은 screener_view 호출 시 인자로 전달합니다.
-            # 기본값은 'Ticker'이며, 상승률순 정렬을 원하면 'Change'를 입력합니다.
+            # 상승률(Change) 순으로 정렬하여 데이터 호출
             df = foverview.screener_view(order='Change') 
 
             if df is not None and not df.empty:
-                # 'Change' 컬럼의 % 기호를 제거하고 숫자로 변환
-                df['Change_Num'] = df['Change'].str.replace('%', '', regex=False).astype(float)
-                result = df[df['Change_Num'] >= min_change]
+                # 'Change' 컬럼 숫자 변환 (% 제거)
+                df['Change_Num'] = pd.to_numeric(df['Change'].str.replace('%', ''), errors='coerce')
+                
+                # 사용자가 설정한 최소 상승률로 필터링
+                result = df[df['Change_Num'] >= min_change].copy()
 
                 if not result.empty:
-                    st.success(f"{len(result)}개의 종목을 찾았습니다!")
-                    display_df = result[['Ticker', 'Company', 'Sector', 'Price', 'Change', 'Volume', 'Relative Volume']]
-                    # 결과 내에서 다시 한번 높은 순서대로 정렬하여 출력
-                    st.dataframe(display_df.sort_values(by='Change_Num', ascending=False), use_container_width=True)
+                    # 상위 10개 추출 (내림차순 정렬 후 head(10))
+                    top_10 = result.sort_values(by='Change_Num', ascending=False).head(10)
+                    
+                    st.success(f"🔥 조건에 맞는 상위 {len(top_10)}개 종목을 찾았습니다.")
+                    
+                    # 출력할 컬럼 지정
+                    display_cols = ['Ticker', 'Company', 'Sector', 'Price', 'Change', 'Volume', 'Relative Volume']
+                    
+                    # 테이블 출력
+                    st.table(top_10[display_cols]) # TOP 10은 table로 보는 것이 더 깔끔합니다.
                 else:
-                    st.warning(f"상승률 {min_change}% 이상인 종목이 현재 없습니다.")
+                    st.warning(f"설정한 조건(상승률 {min_change}% 이상)을 만족하는 종목이 없습니다.")
             else:
-                st.error("데이터를 불러오지 못했습니다.")
+                st.error("Finviz에서 데이터를 가져오지 못했습니다. 잠시 후 다시 시도해주세요.")
 
         except Exception as e:
             st.error(f"오류 발생: {e}")
 
 st.divider()
-st.caption("데이터 제공: Finviz (실시간이 아니며 약 15분 지연될 수 있습니다.)")
+st.caption("데이터 제공: [Finviz Official](https://finviz.com) | 15분 지연 데이터")
+
 
