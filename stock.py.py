@@ -14,32 +14,33 @@ st.title("🚀 미국장 실시간 급등주 스캐너")
 # 사이드바 필터 설정
 st.sidebar.header("🔍 상세 필터 설정")
 
-price_range = st.sidebar.slider(
-    "가격 범위 설정 ($)", 
-    0.0, 500.0, (1.0, 50.0), step=0.5
-)
-min_p, max_p = price_range
+# [변경] 슬라이더 대신 직접 숫자 입력(Number Input) 사용
+st.sidebar.subheader("가격 범위 ($)")
+col1, col2 = st.sidebar.columns(2)
+with col1:
+    min_p = st.number_input("최소 가격", min_value=0.0, max_value=2000.0, value=1.0, step=0.5)
+with col2:
+    max_p = st.number_input("최대 가격", min_value=0.0, max_value=2000.0, value=50.0, step=0.5)
 
+# 거래량 및 상승률 설정
 volume_options = {"Over 100K": "Over 100K", "Over 500K": "Over 500K", "Over 1M": "Over 1M"}
 selected_vol = st.sidebar.selectbox("최소 거래량", options=list(volume_options.keys()), index=1)
-min_change = st.sidebar.slider("최소 상승률 (%)", 0, 50, 10)
+min_change = st.sidebar.number_input("최소 상승률 (%)", min_value=0, max_value=100, value=10, step=1)
 
 @st.cache_data(ttl=55)
 def get_custom_data(v_str, m_chg, p_min, p_max):
     try:
         foverview = Overview()
-        # Finviz 자체 필터를 사용하여 서버 부하와 데이터 전송량 감소
-        # 'Price': 'Under 50' 같은 방식 대신 Pandas 필터링 유지하되, 
-        # 기본적인 거래량 조건은 서버 필터 활용
+        # 기본적인 거래량 필터 적용
         foverview.set_filter(filters_dict={'Current Volume': v_str})
         df = foverview.screener_view(order='Change') 
 
         if df is not None and not df.empty:
-            # 숫자 데이터 변환 (에러 방지용)
-            df['Price'] = pd.to_numeric(df, errors='coerce')
+            # 숫자 데이터로 변환
+            df['Price'] = pd.to_numeric(df['Price'], errors='coerce')
             df['Change_Num'] = pd.to_numeric(df['Change'].str.replace('%', '', regex=False), errors='coerce')
             
-            # 사용자 설정 필터링
+            # 입력된 가격/상승률로 필터링
             filtered_df = df[
                 (df['Price'] >= p_min) & 
                 (df['Price'] <= p_max) & 
@@ -48,24 +49,32 @@ def get_custom_data(v_str, m_chg, p_min, p_max):
             
             return filtered_df.sort_values(by='Change_Num', ascending=False).head(10)
     except Exception as e:
-        st.error(f"데이터 로드 중 오류 발생: {e}")
         return None
+    return None
 
 # 실행부
-with st.spinner(f'${min_p} ~ ${max_p} 종목 분석 중...'):
+with st.spinner('데이터를 분석 중입니다...'):
     res_df = get_custom_data(volume_options[selected_vol], min_change, min_p, max_p)
 
     if res_df is not None and not res_df.empty:
         st.success(f"🔥 {min_p}$ ~ {max_p}$ 범위 내 급등 TOP {len(res_df)}")
         
-        # 가독성을 위한 열 선택 및 스타일링
         display_cols = ['Ticker', 'Company', 'Sector', 'Price', 'Change', 'Volume', 'Relative Volume']
-        st.dataframe(res_df[display_cols].reset_index(drop=True), use_container_width=True)
+        # 표를 더 깔끔하게 보기 위해 데이터프레임 사용
+        st.dataframe(
+            res_df[display_cols].reset_index(drop=True), 
+            use_container_width=True,
+            column_config={
+                "Price": st.column_config.Number_Column(format="$%.2f"),
+                "Change": st.column_config.Text_Column("상승률")
+            }
+        )
     else:
-        st.warning("현재 조건에 맞는 종목이 없습니다. 필터를 조정해보세요.")
+        st.warning(f"{min_p}$ ~ {max_p}$ 조건에 맞는 종목이 없습니다. 가격이나 상승률을 낮춰보세요.")
 
 st.divider()
-st.caption(f"💡 1분마다 자동 갱신됩니다. (현재 설정: {min_p}$ ~ {max_p}$ | {selected_vol})")
+st.caption(f"💡 현재 기준: {min_p}$ ~ {max_p}$ | {selected_vol} 이상 | {min_change}% 상승")
+
 
 
 
